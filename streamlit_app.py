@@ -1,151 +1,101 @@
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
+import random
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+# Initialize session state variables
+if 'user_score' not in st.session_state:
+    st.session_state.user_score = 0
+if 'computer_score' not in st.session_state:
+    st.session_state.computer_score = 0
+if 'round_count' not in st.session_state:
+    st.session_state.round_count = 1
+if 'message' not in st.session_state:
+    st.session_state.message = "Welcome to Rock, Paper, Scissors! Click a button to start playing."
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+choices = {
+    'r': 'rock',
+    'p': 'paper',
+    's': 'scissors'
+}
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def determine_winner(user_choice, computer_choice):
+    if user_choice == computer_choice:
+        return "It's a tie!"
+    elif (user_choice == 'r' and computer_choice == 's') or \
+         (user_choice == 'p' and computer_choice == 'r') or \
+         (user_choice == 's' and computer_choice == 'p'):
+        return "You win!!!"
+    else:
+        return "Computer wins."
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+def play_round(user_choice):
+    computer_choice = random.choice(list(choices.keys()))
+    result = determine_winner(user_choice, computer_choice)
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+    if result == "You win!!!":
+        st.session_state.user_score += 1
+    elif result == "Computer wins.":
+        st.session_state.computer_score += 1
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+    st.session_state.message = f"You chose {choices[user_choice]}. Computer chose {choices[computer_choice]}. {result}"
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
+    if st.session_state.round_count >= 10:
+        if st.session_state.user_score > st.session_state.computer_score:
+            st.session_state.message += "\nYou won the match!"
+        elif st.session_state.user_score < st.session_state.computer_score:
+            st.session_state.message += "\nComputer won the match!"
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+            st.session_state.message += "\nThe match is a tie!"
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+        # Show final message and reset
+        st.write(st.session_state.message)
+
+        # Reset scores and round count
+        st.session_state.user_score = 0
+        st.session_state.computer_score = 0
+        st.session_state.round_count = 1
+        st.session_state.message = "Welcome to Rock, Paper, Scissors! Click a button to start playing."
+    else:
+        st.session_state.round_count += 1
+
+# Streamlit app layout
+st.title("Rock, Paper, Scissors")
+
+st.write(f"Round: {st.session_state.round_count}/10")
+st.write(f"Score: You {st.session_state.user_score} - {st.session_state.computer_score} Computer")
+st.write(st.session_state.message)
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button('Rock'):
+        play_round('r')
+with col2:
+    if st.button('Paper'):
+        play_round('p')
+with col3:
+    if st.button('Scissors'):
+        play_round('s')
+
+st.markdown(
+    """
+    <style>
+    .stButton>button {
+        background-color: #4CAF50;
+        color: white;
+        padding: 15px 32px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 4px 2px;
+        transition-duration: 0.4s;
+        cursor: pointer;
+    }
+    .stButton>button:hover {
+        background-color: white;
+        color: black;
+        border: 2px solid #4CAF50;
+    }
+    </style>
+    """, unsafe_allow_html=True
+)
